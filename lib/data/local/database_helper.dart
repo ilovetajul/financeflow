@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../../domain/models/transaction.dart';
+import '../../domain/models/transaction.dart' as model;
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
@@ -32,13 +32,13 @@ class DatabaseHelper {
     ''');
   }
 
-  Future<List<Transaction>> getAllTransactions() async {
+  Future<List<model.Transaction>> getAllTransactions() async {
     final db = await database;
     final maps = await db.query('transactions', orderBy: 'date DESC');
-    return maps.map(Transaction.fromJson).toList();
+    return maps.map(model.Transaction.fromJson).toList();
   }
 
-  Future<void> insertTransaction(Transaction tx) async {
+  Future<void> insertTransaction(model.Transaction tx) async {
     final db = await database;
     await db.insert(
       'transactions',
@@ -57,7 +57,7 @@ class DatabaseHelper {
     await db.delete('transactions');
   }
 
-  Future<void> insertAll(List<Transaction> txs) async {
+  Future<void> insertAll(List<model.Transaction> txs) async {
     final db = await database;
     final batch = db.batch();
     for (final tx in txs) {
