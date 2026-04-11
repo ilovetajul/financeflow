@@ -47,25 +47,25 @@ class BackupNotifier extends StateNotifier<BackupState> {
   Future<void> _loadLastBackupInfo() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/financeflow_backup.json');
+      final file =
+          File('${dir.path}/financeflow_backup.json');
       if (await file.exists()) {
         final stat = await file.stat();
-        final modified = stat.modified;
+        final m = stat.modified;
         state = state.copyWith(
           lastBackupDate:
-              '${modified.day}/${modified.month}/${modified.year} · ${modified.hour}:${modified.minute.toString().padLeft(2, '0')}',
+              '${m.day}/${m.month}/${m.year} · ${m.hour}:${m.minute.toString().padLeft(2, '0')}',
         );
       }
     } catch (_) {}
   }
 
-  // ── Backup: Save JSON file ──────────────────────────────
+  // ── Backup ──────────────────────────────────────────────
   Future<void> backup(List<Transaction> transactions) async {
     state = state.copyWith(
         status: BackupStatus.loading,
         message: 'Backup তৈরি হচ্ছে...');
     try {
-      // Build JSON
       final data = {
         'version': 1,
         'backup_date': DateTime.now().toIso8601String(),
@@ -77,13 +77,14 @@ class BackupNotifier extends StateNotifier<BackupState> {
       final jsonStr =
           const JsonEncoder.withIndent('  ').convert(data);
 
-      // Save to app documents folder
+      // App documents folder এ save
       final dir = await getApplicationDocumentsDirectory();
-      final file =
+      final appFile =
           File('${dir.path}/financeflow_backup.json');
-      await file.writeAsString(jsonStr);
+      await appFile.writeAsString(jsonStr);
 
-      // Also save to Downloads if possible
+      // Downloads/FinanceFlow/ এ save
+      String? savedPath;
       try {
         final downloads = Directory(
             '/storage/emulated/0/Download/FinanceFlow');
@@ -92,16 +93,19 @@ class BackupNotifier extends StateNotifier<BackupState> {
         }
         final now = DateTime.now();
         final fileName =
-            'financeflow_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.json';
-        await File('${downloads.path}/$fileName')
-            .writeAsString(jsonStr);
+            'financeflow_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour}${now.minute.toString().padLeft(2, '0')}.json';
+        final dlFile =
+            File('${downloads.path}/$fileName');
+        await dlFile.writeAsString(jsonStr);
+        savedPath = dlFile.path;
       } catch (_) {}
 
       final now = DateTime.now();
       state = state.copyWith(
         status: BackupStatus.success,
-        message:
-            '${transactions.length} টি লেনদেন backup হয়েছে! ✅',
+        message: savedPath != null
+            ? '${transactions.length} টি লেনদেন backup হয়েছে!\n📁 Download/FinanceFlow/ তে save হয়েছে'
+            : '${transactions.length} টি লেনদেন backup হয়েছে!',
         lastBackupDate:
             '${now.day}/${now.month}/${now.year} · ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
         recordCount: transactions.length,
@@ -109,13 +113,14 @@ class BackupNotifier extends StateNotifier<BackupState> {
     } catch (e) {
       state = state.copyWith(
         status: BackupStatus.error,
-        message: 'Backup ব্যর্থ হয়েছে: $e',
+        message: 'Backup ব্যর্থ: $e',
       );
     }
   }
 
-  // ── Share: Send backup file via WhatsApp/Email ──────────
-  Future<void> shareBackup(List<Transaction> transactions) async {
+  // ── Share ────────────────────────────────────────────────
+  Future<void> shareBackup(
+      List<Transaction> transactions) async {
     state = state.copyWith(
         status: BackupStatus.loading,
         message: 'Share এর জন্য তৈরি হচ্ছে...');
@@ -142,64 +147,79 @@ class BackupNotifier extends StateNotifier<BackupState> {
         [XFile(file.path)],
         subject: 'FinanceFlow Backup — $fileName',
         text:
-            'আমার FinanceFlow এর ${transactions.length} টি লেনদেনের backup।',
+            'FinanceFlow এর ${transactions.length} টি লেনদেনের backup।',
       );
 
-      state = state.copyWith(status: BackupStatus.idle);
+      state =
+          state.copyWith(status: BackupStatus.idle);
     } catch (e) {
       state = state.copyWith(
         status: BackupStatus.error,
-        message: 'Share ব্যর্থ হয়েছে: $e',
+        message: 'Share ব্যর্থ: $e',
       );
     }
   }
 
-  // ── Restore: Load from JSON file ───────────────────────
+  // ── Restore ──────────────────────────────────────────────
   Future<List<Transaction>?> pickAndRestore() async {
     state = state.copyWith(
         status: BackupStatus.loading,
         message: 'File খোঁজা হচ্ছে...');
     try {
+      // সব ধরনের ফাইল দেখাবে — JSON filter সরিয়ে দিলাম
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        dialogTitle: 'FinanceFlow Backup ফাইল বেছে নাও',
+        type: FileType.any,
+        allowMultiple: false,
+        withData: true, // ফাইলের data directly পড়বে
       );
 
       if (result == null || result.files.isEmpty) {
-        state = state.copyWith(status: BackupStatus.idle);
+        state =
+            state.copyWith(status: BackupStatus.idle);
         return null;
       }
 
-      final path = result.files.single.path;
-      if (path == null) {
-        state = state.copyWith(status: BackupStatus.idle);
-        return null;
-      }
+      final pickedFile = result.files.single;
+      String jsonStr;
 
-      final file = File(path);
-      final jsonStr = await file.readAsString();
-      final data =
-          jsonDecode(jsonStr) as Map<String, dynamic>;
-
-      if (data['app'] != 'FinanceFlow') {
+      // Data directly পাওয়া গেলে সেটা ব্যবহার করো
+      if (pickedFile.bytes != null) {
+        jsonStr = utf8.decode(pickedFile.bytes!);
+      } else if (pickedFile.path != null) {
+        final file = File(pickedFile.path!);
+        jsonStr = await file.readAsString();
+      } else {
         state = state.copyWith(
           status: BackupStatus.error,
-          message: 'এটা FinanceFlow এর backup ফাইল না!',
+          message: 'ফাইল পড়া যাচ্ছে না',
         );
         return null;
       }
 
-      final rawList = data['transactions'] as List<dynamic>;
+      // JSON parse করো
+      final data =
+          jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      // FinanceFlow backup কিনা চেক করো
+      if (data['app'] != 'FinanceFlow') {
+        state = state.copyWith(
+          status: BackupStatus.error,
+          message: '❌ এটা FinanceFlow এর backup ফাইল না!',
+        );
+        return null;
+      }
+
+      final rawList =
+          data['transactions'] as List<dynamic>;
       final transactions = rawList
-          .map((e) =>
-              Transaction.fromJson(e as Map<String, dynamic>))
+          .map((e) => Transaction.fromJson(
+              e as Map<String, dynamic>))
           .toList();
 
       state = state.copyWith(
         status: BackupStatus.success,
         message:
-            '${transactions.length} টি লেনদেন সফলভাবে restore হয়েছে! ✅',
+            '✅ ${transactions.length} টি লেনদেন restore হয়েছে!',
         recordCount: transactions.length,
       );
 
@@ -207,7 +227,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
     } catch (e) {
       state = state.copyWith(
         status: BackupStatus.error,
-        message: 'Restore ব্যর্থ হয়েছে: $e',
+        message: 'Restore ব্যর্থ: $e\n\nFile টি FinanceFlow backup কিনা নিশ্চিত করো',
       );
       return null;
     }
@@ -231,8 +251,7 @@ class BackupScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final backupState = ref.watch(backupProvider);
     final notifier = ref.read(backupProvider.notifier);
-    final txAsync = ref.watch(transactionsProvider);
-    final transactions = txAsync.maybeWhen(
+    final transactions = ref.watch(transactionsProvider).maybeWhen(
       data: (t) => t,
       orElse: () => <Transaction>[],
     );
@@ -247,23 +266,17 @@ class BackupScreen extends ConsumerWidget {
             children: [
 
               // ── Header ──
-              const Text(
-                'Backup & Restore',
+              const Text('Backup & Restore',
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   fontFamily: 'Syne',
-                ),
-              ),
+                )),
               const SizedBox(height: 4),
-              const Text(
-                'তোমার হিসাব নিরাপদে সংরক্ষণ করো',
+              const Text('তোমার হিসাব নিরাপদে সংরক্ষণ করো',
                 style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
-                ),
-              ),
+                    color: AppColors.textMuted, fontSize: 13)),
 
               const SizedBox(height: 24),
 
@@ -272,180 +285,116 @@ class BackupScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF1E3A5F),
-                      Color(0xFF0D1B3E),
-                    ],
+                    colors: [Color(0xFF1E3A5F), Color(0xFF0D1B3E)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: AppColors.gold.withOpacity(0.2),
-                  ),
+                      color: AppColors.gold.withOpacity(0.2)),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: AppColors.gold
-                                .withOpacity(0.15),
-                            borderRadius:
-                                BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppColors.gold
-                                  .withOpacity(0.3),
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '📦',
-                              style: TextStyle(fontSize: 22),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Local Backup',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  fontFamily: 'Syne',
-                                ),
-                              ),
-                              Text(
-                                '${transactions.length} টি লেনদেন ready',
-                                style: const TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.teal
-                                .withOpacity(0.15),
-                            borderRadius:
-                                BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.teal
-                                  .withOpacity(0.3),
-                            ),
-                          ),
-                          child: const Text(
-                            'Active',
-                            style: TextStyle(
-                              color: AppColors.teal,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
+                child: Column(children: [
+                  Row(children: [
+                    Container(
+                      width: 48, height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: AppColors.gold.withOpacity(0.3)),
+                      ),
+                      child: const Center(
+                          child: Text('📦',
+                              style: TextStyle(fontSize: 22))),
                     ),
-
-                    const SizedBox(height: 16),
-                    const Divider(
-                        color: Colors.white12, height: 1),
-                    const SizedBox(height: 16),
-
-                    // Stats
-                    Row(
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _StatItem(
-                          icon: '🕐',
-                          label: 'Last Backup',
-                          value: backupState.lastBackupDate ??
-                              'কোনো backup নেই',
-                        ),
+                        const Text('Local Backup',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Syne',
+                          )),
+                        Text('${transactions.length} টি লেনদেন ready',
+                          style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 12)),
                       ],
+                    )),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.teal.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: AppColors.teal.withOpacity(0.3)),
+                      ),
+                      child: const Text('Active',
+                        style: TextStyle(
+                          color: AppColors.teal,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        )),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _StatItem(
-                          icon: '📊',
-                          label: 'Records',
-                          value:
-                              '${transactions.length} টি লেনদেন',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _StatItem(
-                          icon: '📁',
-                          label: 'Save Location',
-                          value: 'Downloads/FinanceFlow/',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ]),
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 16),
+                  _StatRow(icon: '🕐', label: 'Last Backup',
+                    value: backupState.lastBackupDate ?? 'কোনো backup নেই'),
+                  const SizedBox(height: 8),
+                  _StatRow(icon: '📊', label: 'Records',
+                    value: '${transactions.length} টি লেনদেন'),
+                  const SizedBox(height: 8),
+                  const _StatRow(icon: '📁', label: 'Save Location',
+                    value: 'Download/FinanceFlow/'),
+                ]),
               ),
 
               const SizedBox(height: 16),
 
-              // ── How it works ──
+              // ── How to Restore Guide ──
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.gold.withOpacity(0.06),
+                  color: AppColors.purple.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppColors.gold.withOpacity(0.15),
-                  ),
+                      color: AppColors.purple.withOpacity(0.2)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Row(children: [
-                      Text('💡',
-                          style: TextStyle(fontSize: 16)),
+                      Text('🔄', style: TextStyle(fontSize: 16)),
                       SizedBox(width: 8),
-                      Text(
-                        'কীভাবে কাজ করে?',
+                      Text('Restore কীভাবে করবে?',
                         style: TextStyle(
-                          color: AppColors.gold,
+                          color: AppColors.purple,
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                        )),
                     ]),
                     const SizedBox(height: 10),
                     ...[
-                      '📥 Backup Now — JSON ফাইল ফোনে save হবে',
-                      '📤 Share — WhatsApp/Gmail এ পাঠাও',
-                      '🔄 Restore — পুরানো ফাইল import করলে সব data ফিরে আসবে',
-                      '✅ Uninstall করলেও Downloads ফোল্ডারে ফাইল থাকবে',
-                    ].map((tip) => Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: 6),
-                          child: Text(
-                            tip,
+                      '১. আগে "Backup Now" দিয়ে backup নাও',
+                      '২. অথবা "Share" দিয়ে WhatsApp এ নিজেকে পাঠাও',
+                      '৩. Uninstall → Reinstall করার পর',
+                      '৪. "Restore from File" চাপো',
+                      '৫. WhatsApp থেকে file save করে সেটা বেছে দাও',
+                      '৬. সব পুরানো হিসাব ফিরে আসবে ✅',
+                    ].map((s) => Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
+                          child: Text(s,
                             style: const TextStyle(
                               color: AppColors.textMuted,
                               fontSize: 12,
                               height: 1.4,
-                            ),
-                          ),
+                            )),
                         )),
                   ],
                 ),
@@ -454,42 +403,31 @@ class BackupScreen extends ConsumerWidget {
               const SizedBox(height: 16),
 
               // ── Status Banner ──
-              if (backupState.status ==
-                  BackupStatus.loading) ...[
+              if (backupState.status == BackupStatus.loading) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: AppColors.gold.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: AppColors.gold.withOpacity(0.3),
-                    ),
+                        color: AppColors.gold.withOpacity(0.3)),
                   ),
                   child: Row(children: [
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
+                    const SizedBox(width: 20, height: 20,
                       child: CircularProgressIndicator(
-                        color: AppColors.gold,
-                        strokeWidth: 2,
-                      ),
-                    ),
+                          color: AppColors.gold, strokeWidth: 2)),
                     const SizedBox(width: 12),
-                    Text(
-                      backupState.message ?? 'Processing...',
+                    Text(backupState.message ?? 'Processing...',
                       style: const TextStyle(
-                        color: AppColors.gold,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                          color: AppColors.gold,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
                   ]),
                 ),
                 const SizedBox(height: 12),
               ],
 
-              if (backupState.status ==
-                      BackupStatus.success &&
+              if (backupState.status == BackupStatus.success &&
                   backupState.message != null) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -497,30 +435,22 @@ class BackupScreen extends ConsumerWidget {
                     color: AppColors.teal.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: AppColors.teal.withOpacity(0.3),
-                    ),
+                        color: AppColors.teal.withOpacity(0.3)),
                   ),
                   child: Row(children: [
-                    const Text('✅',
-                        style: TextStyle(fontSize: 20)),
+                    const Text('✅', style: TextStyle(fontSize: 20)),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        backupState.message!,
-                        style: const TextStyle(
+                    Expanded(child: Text(backupState.message!,
+                      style: const TextStyle(
                           color: AppColors.teal,
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                          fontWeight: FontWeight.w600))),
                   ]),
                 ),
                 const SizedBox(height: 12),
               ],
 
-              if (backupState.status ==
-                      BackupStatus.error &&
+              if (backupState.status == BackupStatus.error &&
                   backupState.message != null) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -528,45 +458,39 @@ class BackupScreen extends ConsumerWidget {
                     color: AppColors.rose.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: AppColors.rose.withOpacity(0.3),
-                    ),
+                        color: AppColors.rose.withOpacity(0.3)),
                   ),
-                  child: Row(children: [
-                    const Text('❌',
-                        style: TextStyle(fontSize: 20)),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                    const Text('❌', style: TextStyle(fontSize: 20)),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        backupState.message!,
-                        style: const TextStyle(
+                    Expanded(child: Text(backupState.message!,
+                      style: const TextStyle(
                           color: AppColors.rose,
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                          fontWeight: FontWeight.w600))),
                   ]),
                 ),
                 const SizedBox(height: 12),
               ],
 
-              // ── Action Buttons ──
+              // ── Buttons ──
               if (backupState.status != BackupStatus.loading) ...[
 
                 // Backup Now
                 _ActionButton(
                   icon: '📥',
                   label: 'Backup Now',
-                  subtitle: 'ফোনে JSON ফাইল save করো',
+                  subtitle: 'Download/FinanceFlow/ তে save করো',
                   gradient: AppColors.gradGold,
                   textColor: const Color(0xFF0A0E1A),
-                  onTap: () =>
-                      notifier.backup(transactions),
+                  onTap: () => notifier.backup(transactions),
                 ),
 
                 const SizedBox(height: 10),
 
-                // Share Backup
+                // Share
                 _ActionButton(
                   icon: '📤',
                   label: 'Share Backup',
@@ -582,41 +506,32 @@ class BackupScreen extends ConsumerWidget {
                 // Restore
                 GestureDetector(
                   onTap: () async {
-                    // Confirm first
                     final confirm = await showDialog<bool>(
                       context: context,
                       builder: (_) => AlertDialog(
-                        backgroundColor:
-                            const Color(0xFF141C2E),
+                        backgroundColor: const Color(0xFF141C2E),
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(20),
-                        ),
-                        title: const Text(
-                          '⚠️ Restore করবে?',
+                            borderRadius:
+                                BorderRadius.circular(20)),
+                        title: const Text('⚠️ Restore করবে?',
                           style: TextStyle(
                             color: AppColors.textPrimary,
                             fontFamily: 'Syne',
                             fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                          )),
                         content: const Text(
-                          'এটি করলে বর্তমান সব data মুছে যাবে এবং backup ফাইল থেকে পুরানো data ফিরে আসবে।\n\nনিশ্চিত?',
+                          'বর্তমান সব data মুছে যাবে এবং backup ফাইলের পুরানো data ফিরে আসবে।\n\nনিশ্চিত?',
                           style: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 13,
-                            height: 1.5,
-                          ),
-                        ),
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                              height: 1.5)),
                         actions: [
                           TextButton(
                             onPressed: () =>
                                 Navigator.pop(context, false),
-                            child: const Text(
-                              'বাতিল',
+                            child: const Text('বাতিল',
                               style: TextStyle(
-                                  color: AppColors.textMuted),
-                            ),
+                                  color: AppColors.textMuted)),
                           ),
                           ElevatedButton(
                             onPressed: () =>
@@ -625,9 +540,8 @@ class BackupScreen extends ConsumerWidget {
                               backgroundColor: AppColors.rose,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(10),
-                              ),
+                                  borderRadius:
+                                      BorderRadius.circular(10)),
                             ),
                             child: const Text('Restore করো'),
                           ),
@@ -652,56 +566,47 @@ class BackupScreen extends ConsumerWidget {
                       color: Colors.white.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: AppColors.purple
-                            .withOpacity(0.3),
-                      ),
+                          color:
+                              AppColors.purple.withOpacity(0.3)),
                     ),
                     child: Row(children: [
                       Container(
-                        width: 44,
-                        height: 44,
+                        width: 44, height: 44,
                         decoration: BoxDecoration(
-                          color: AppColors.purple
-                              .withOpacity(0.15),
+                          color:
+                              AppColors.purple.withOpacity(0.15),
                           borderRadius:
                               BorderRadius.circular(13),
                         ),
                         child: const Center(
-                          child: Text('🔄',
-                              style: TextStyle(fontSize: 20)),
-                        ),
+                            child: Text('🔄',
+                                style:
+                                    TextStyle(fontSize: 20))),
                       ),
                       const SizedBox(width: 14),
-                      Expanded(
+                      const Expanded(
                         child: Column(
                           crossAxisAlignment:
                               CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Restore from File',
+                            Text('Restore from File',
                               style: TextStyle(
                                 color: AppColors.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                                 fontFamily: 'Syne',
-                              ),
-                            ),
-                            const Text(
-                              'পুরানো backup ফাইল import করো',
+                              )),
+                            Text('যেকোনো ফোল্ডার থেকে JSON ফাইল বেছে নাও',
                               style: TextStyle(
                                 color: AppColors.textMuted,
                                 fontSize: 12,
-                              ),
-                            ),
+                              )),
                           ],
                         ),
                       ),
-                      Icon(
-                        Icons.folder_open_rounded,
-                        color:
-                            AppColors.purple.withOpacity(0.7),
-                        size: 20,
-                      ),
+                      Icon(Icons.folder_open_rounded,
+                        color: AppColors.purple.withOpacity(0.7),
+                        size: 20),
                     ]),
                   ),
                 ),
@@ -715,19 +620,17 @@ class BackupScreen extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: AppColors.teal.withOpacity(0.06),
                   border: Border.all(
-                    color: AppColors.teal.withOpacity(0.15),
-                  ),
+                      color: AppColors.teal.withOpacity(0.15)),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('🔒',
-                        style: TextStyle(fontSize: 18)),
+                    Text('💡', style: TextStyle(fontSize: 18)),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'তোমার data JSON ফাইলে save হয়। ফোন Format বা Uninstall করার আগে "Share Backup" দিয়ে WhatsApp এ নিজেকে পাঠিয়ে রাখো। পরে Restore করলে সব ফিরে আসবে।',
+                        'ফোন Format বা App Uninstall করার আগে "Share Backup" দিয়ে WhatsApp এ নিজেকে পাঠাও। পরে reinstall করে WhatsApp থেকে ফাইলটা ডাউনলোড করে Restore দিলেই সব হিসাব ফিরে আসবে।',
                         style: TextStyle(
                           color: AppColors.textMuted,
                           fontSize: 12,
@@ -749,9 +652,9 @@ class BackupScreen extends ConsumerWidget {
 }
 
 // ── Helper Widgets ──────────────────────────────────────────
-class _StatItem extends StatelessWidget {
+class _StatRow extends StatelessWidget {
   final String icon, label, value;
-  const _StatItem({
+  const _StatRow({
     required this.icon,
     required this.label,
     required this.value,
@@ -759,23 +662,20 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Row(children: [
-        Text(icon, style: const TextStyle(fontSize: 16)),
-        const SizedBox(width: 10),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.textMuted, fontSize: 11)),
-          Text(value,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              )),
-        ]),
-      ]),
-    );
+    return Row(children: [
+      Text(icon, style: const TextStyle(fontSize: 16)),
+      const SizedBox(width: 10),
+      Text(label,
+        style: const TextStyle(
+            color: AppColors.textMuted, fontSize: 12)),
+      const Spacer(),
+      Text(value,
+        style: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        )),
+    ]);
   }
 }
 
@@ -804,56 +704,43 @@ class _ActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: gradient,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          )],
         ),
         child: Row(children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 44, height: 44,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Center(
-              child: Text(icon,
-                  style: const TextStyle(fontSize: 20)),
-            ),
+                child: Text(icon,
+                    style: const TextStyle(fontSize: 20))),
           ),
           const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Syne',
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: textColor.withOpacity(0.7),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            color: textColor.withOpacity(0.6),
-            size: 16,
-          ),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Syne',
+                )),
+              Text(subtitle,
+                style: TextStyle(
+                  color: textColor.withOpacity(0.7),
+                  fontSize: 12,
+                )),
+            ],
+          )),
+          Icon(Icons.arrow_forward_ios_rounded,
+            color: textColor.withOpacity(0.6), size: 16),
         ]),
       ),
     );
