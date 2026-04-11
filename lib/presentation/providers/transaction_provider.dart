@@ -34,6 +34,12 @@ class TransactionNotifier extends AsyncNotifier<List<Transaction>> {
     ref.invalidateSelf();
   }
 
+  // ── Edit/Update ─────────────────────────────────────────
+  Future<void> update(Transaction tx) async {
+    await _db.updateTransaction(tx);
+    ref.invalidateSelf();
+  }
+
   Future<void> remove(String id) async {
     await _db.deleteTransaction(id);
     ref.invalidateSelf();
@@ -46,24 +52,54 @@ class TransactionNotifier extends AsyncNotifier<List<Transaction>> {
   }
 }
 
-// ── Computed Providers ──
+// ── Month Provider ───────────────────────────────────────────
+final selectedMonthProvider = StateProvider<DateTime>(
+  (ref) => DateTime(DateTime.now().year, DateTime.now().month));
+
+// ── Filtered by Month ────────────────────────────────────────
+final filteredTransactionsProvider = Provider<List<Transaction>>((ref) {
+  final selectedMonth = ref.watch(selectedMonthProvider);
+  return ref.watch(transactionsProvider).maybeWhen(
+    data: (txs) => txs
+        .where((t) =>
+            t.date.year == selectedMonth.year &&
+            t.date.month == selectedMonth.month)
+        .toList(),
+    orElse: () => [],
+  );
+});
+
+// ── This Month Income ────────────────────────────────────────
 final totalIncomeProvider = Provider<double>((ref) {
-  return ref.watch(transactionsProvider).maybeWhen(
-    data: (txs) => txs
-        .where((t) => t.type == TransactionType.income)
-        .fold(0.0, (sum, t) => sum + t.amount),
-    orElse: () => 0.0,
-  );
+  return ref
+      .watch(filteredTransactionsProvider)
+      .where((t) => t.type == TransactionType.income)
+      .fold(0.0, (sum, t) => sum + t.amount);
 });
 
+// ── This Month Expense ───────────────────────────────────────
 final totalExpenseProvider = Provider<double>((ref) {
-  return ref.watch(transactionsProvider).maybeWhen(
-    data: (txs) => txs
-        .where((t) => t.type == TransactionType.expense)
-        .fold(0.0, (sum, t) => sum + t.amount),
-    orElse: () => 0.0,
-  );
+  return ref
+      .watch(filteredTransactionsProvider)
+      .where((t) => t.type == TransactionType.expense)
+      .fold(0.0, (sum, t) => sum + t.amount);
 });
 
+// ── All Time Balance ─────────────────────────────────────────
 final balanceProvider = Provider<double>((ref) =>
     ref.watch(totalIncomeProvider) - ref.watch(totalExpenseProvider));
+
+final allTimeBalanceProvider = Provider<double>((ref) {
+  return ref.watch(transactionsProvider).maybeWhen(
+    data: (txs) {
+      final income = txs
+          .where((t) => t.type == TransactionType.income)
+          .fold(0.0, (s, t) => s + t.amount);
+      final expense = txs
+          .where((t) => t.type == TransactionType.expense)
+          .fold(0.0, (s, t) => s + t.amount);
+      return income - expense;
+    },
+    orElse: () => 0.0,
+  );
+});
