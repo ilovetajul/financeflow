@@ -5,6 +5,7 @@ import 'add_transaction/add_transaction_screen.dart';
 import 'reports/reports_screen.dart';
 import 'backup/backup_screen.dart';
 import 'category/category_screen.dart';
+import 'pdf_export/pdf_export_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -29,6 +30,19 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: _screens[_currentIndex],
+      floatingActionButton: _currentIndex == 3
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const PdfExportScreen())),
+              backgroundColor: AppColors.gold,
+              foregroundColor: const Color(0xFF0A0E1A),
+              icon: const Icon(Icons.picture_as_pdf_rounded),
+              label: const Text('PDF',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+            )
+          : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF0A0E1A),
@@ -45,36 +59,21 @@ class _HomeShellState extends State<HomeShell> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _NavItem(
-                  icon: '🏠',
-                  label: 'Home',
+                _NavItem(icon: '🏠', label: 'Home',
                   active: _currentIndex == 0,
-                  onTap: () => setState(() => _currentIndex = 0),
-                ),
-                _NavItem(
-                  icon: '🏷️',
-                  label: 'Category',
+                  onTap: () => setState(() => _currentIndex = 0)),
+                _NavItem(icon: '🏷️', label: 'Category',
                   active: _currentIndex == 1,
-                  onTap: () => setState(() => _currentIndex = 1),
-                ),
-                _NavItem(
-                  icon: '➕',
-                  label: 'Add',
+                  onTap: () => setState(() => _currentIndex = 1)),
+                _NavItem(icon: '➕', label: 'Add',
                   active: _currentIndex == 2,
-                  onTap: () => setState(() => _currentIndex = 2),
-                ),
-                _NavItem(
-                  icon: '📊',
-                  label: 'Reports',
+                  onTap: () => setState(() => _currentIndex = 2)),
+                _NavItem(icon: '📊', label: 'Reports',
                   active: _currentIndex == 3,
-                  onTap: () => setState(() => _currentIndex = 3),
-                ),
-                _NavItem(
-                  icon: '☁️',
-                  label: 'Backup',
+                  onTap: () => setState(() => _currentIndex = 3)),
+                _NavItem(icon: '☁️', label: 'Backup',
                   active: _currentIndex == 4,
-                  onTap: () => setState(() => _currentIndex = 4),
-                ),
+                  onTap: () => setState(() => _currentIndex = 4)),
               ],
             ),
           ),
@@ -85,17 +84,12 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class _NavItem extends StatelessWidget {
-  final String icon;
-  final String label;
+  final String icon, label;
   final bool active;
   final VoidCallback onTap;
-
   const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
+    required this.icon, required this.label,
+    required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -105,34 +99,17 @@ class _NavItem extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            icon,
-            style: TextStyle(
-              fontSize: 22,
-              color: active ? null : const Color(0xFF4A5568),
-            ),
-          ),
+          Text(icon, style: TextStyle(fontSize: 22,
+            color: active ? null : const Color(0xFF4A5568))),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight:
-                  active ? FontWeight.w700 : FontWeight.w400,
-              color: active
-                  ? AppColors.gold
-                  : const Color(0xFF4A5568),
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: 10,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+            color: active ? AppColors.gold : const Color(0xFF4A5568))),
           if (active) ...[
             const SizedBox(height: 3),
-            Container(
-              width: 4, height: 4,
+            Container(width: 4, height: 4,
               decoration: const BoxDecoration(
-                color: AppColors.gold,
-                shape: BoxShape.circle,
-              ),
-            ),
+                color: AppColors.gold, shape: BoxShape.circle)),
           ],
         ],
       ),
