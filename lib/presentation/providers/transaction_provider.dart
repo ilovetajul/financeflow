@@ -34,8 +34,8 @@ class TransactionNotifier extends AsyncNotifier<List<Transaction>> {
     ref.invalidateSelf();
   }
 
-  // ── Edit/Update ─────────────────────────────────────────
-  Future<void> update(Transaction tx) async {
+  // edit নাম ব্যবহার করো — update নয়
+  Future<void> edit(Transaction tx) async {
     await _db.updateTransaction(tx);
     ref.invalidateSelf();
   }
@@ -52,12 +52,11 @@ class TransactionNotifier extends AsyncNotifier<List<Transaction>> {
   }
 }
 
-// ── Month Provider ───────────────────────────────────────────
 final selectedMonthProvider = StateProvider<DateTime>(
-  (ref) => DateTime(DateTime.now().year, DateTime.now().month));
+    (ref) => DateTime(DateTime.now().year, DateTime.now().month));
 
-// ── Filtered by Month ────────────────────────────────────────
-final filteredTransactionsProvider = Provider<List<Transaction>>((ref) {
+final filteredTransactionsProvider =
+    Provider<List<Transaction>>((ref) {
   final selectedMonth = ref.watch(selectedMonthProvider);
   return ref.watch(transactionsProvider).maybeWhen(
     data: (txs) => txs
@@ -69,23 +68,16 @@ final filteredTransactionsProvider = Provider<List<Transaction>>((ref) {
   );
 });
 
-// ── This Month Income ────────────────────────────────────────
-final totalIncomeProvider = Provider<double>((ref) {
-  return ref
-      .watch(filteredTransactionsProvider)
-      .where((t) => t.type == TransactionType.income)
-      .fold(0.0, (sum, t) => sum + t.amount);
-});
+final totalIncomeProvider = Provider<double>((ref) => ref
+    .watch(filteredTransactionsProvider)
+    .where((t) => t.type == TransactionType.income)
+    .fold(0.0, (s, t) => s + t.amount));
 
-// ── This Month Expense ───────────────────────────────────────
-final totalExpenseProvider = Provider<double>((ref) {
-  return ref
-      .watch(filteredTransactionsProvider)
-      .where((t) => t.type == TransactionType.expense)
-      .fold(0.0, (sum, t) => sum + t.amount);
-});
+final totalExpenseProvider = Provider<double>((ref) => ref
+    .watch(filteredTransactionsProvider)
+    .where((t) => t.type == TransactionType.expense)
+    .fold(0.0, (s, t) => s + t.amount));
 
-// ── All Time Balance ─────────────────────────────────────────
 final balanceProvider = Provider<double>((ref) =>
     ref.watch(totalIncomeProvider) - ref.watch(totalExpenseProvider));
 
