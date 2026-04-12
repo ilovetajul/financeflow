@@ -5,6 +5,8 @@ import '../../providers/transaction_provider.dart';
 import '../../../domain/models/transaction.dart';
 import '../all_transactions/all_transactions_screen.dart';
 import '../search/search_screen.dart';
+import '../edit_transaction/edit_transaction_screen.dart';
+
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
