@@ -1,7 +1,3 @@
-## ═══════════════════════════════════════════
-## FILE 1: pubspec.yaml (root এ রাখো)
-## ═══════════════════════════════════════════
-
 name: financeflow
 description: Personal Finance Tracker
 publish_to: none
@@ -30,6 +26,10 @@ dependencies:
   pdf: ^3.10.8
   printing: ^5.12.0
 
+  # Profile + PIN এর জন্য
+  shared_preferences: ^2.2.3
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -37,3 +37,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # বাংলা font asset
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: NotoSansBengali
+      fonts:
+        - asset: assets/fonts/NotoSansBengali-Regular.ttf
+        - asset: assets/fonts/NotoSansBengali-Bold.ttf
+          weight: 700
