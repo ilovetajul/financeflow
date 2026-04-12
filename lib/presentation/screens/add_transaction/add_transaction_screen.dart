@@ -24,11 +24,9 @@ class _AddTransactionScreenState
 
   Color get _typeColor =>
       _type == TransactionType.income ? AppColors.teal : AppColors.rose;
-
   Gradient get _typeGrad =>
       _type == TransactionType.income
-          ? AppColors.gradTeal
-          : AppColors.gradRose;
+          ? AppColors.gradTeal : AppColors.gradRose;
 
   @override
   void dispose() {
@@ -46,50 +44,56 @@ class _AddTransactionScreenState
       category: _selectedCategory!.name,
       amount: double.parse(_amountCtrl.text),
       note: _noteCtrl.text.isNotEmpty
-          ? _noteCtrl.text
-          : _selectedCategory!.name,
+          ? _noteCtrl.text : _selectedCategory!.name,
       date: _date,
       icon: _selectedCategory!.icon,
     );
 
-    setState(() {
-      _saving = false;
-      _selectedCategory = null;
-    });
+    setState(() { _saving = false; _selectedCategory = null; });
     _amountCtrl.clear();
     _noteCtrl.clear();
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.teal,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          behavior: SnackBarBehavior.floating,
-          content: const Row(children: [
-            Text('✅ ', style: TextStyle(fontSize: 16)),
-            Text('সফলভাবে সেভ হয়েছে!',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w600)),
-          ]),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: AppColors.teal,
+        behavior: SnackBarBehavior.floating,
+        content: Row(children: [
+          Text('✅ ', style: TextStyle(fontSize: 16)),
+          Text('সফলভাবে সেভ হয়েছে!',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        ])));
     }
+  }
+
+  // ── Calculator ──────────────────────────────────────────
+  void _openCalculator() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _CalculatorSheet(
+        onResult: (result) {
+          setState(() => _amountCtrl.text = result);
+        }));
   }
 
   @override
   Widget build(BuildContext context) {
-    // ── Dynamic categories from provider ──
     final allCategories = ref.watch(categoriesProvider);
-    final categories = allCategories
-        .where((c) => c.type == _type)
-        .toList();
-
+    final categories =
+        allCategories.where((c) => c.type == _type).toList();
     final canSave =
         _amountCtrl.text.isNotEmpty && _selectedCategory != null;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      // ── Calculator FAB ──
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openCalculator,
+        backgroundColor: AppColors.purple,
+        elevation: 8,
+        child: const Text('🧮', style: TextStyle(fontSize: 22)),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -97,34 +101,53 @@ class _AddTransactionScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // ── Header ──
-              const Text('Add Transaction',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'Syne',
-                )),
-              const SizedBox(height: 4),
-              const Text('তোমার আয় বা খরচ লিখো',
-                style: TextStyle(
-                    color: AppColors.textMuted, fontSize: 13)),
+              // Header
+              Row(children: [
+                const Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Add Transaction',
+                      style: TextStyle(color: AppColors.textPrimary,
+                          fontSize: 24, fontWeight: FontWeight.w800,
+                          fontFamily: 'Syne')),
+                    Text('তোমার আয় বা খরচ লিখো',
+                      style: TextStyle(
+                          color: AppColors.textMuted, fontSize: 13)),
+                  ])),
+                // Calculator hint
+                GestureDetector(
+                  onTap: _openCalculator,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.purple.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: AppColors.purple.withOpacity(0.3))),
+                    child: const Row(children: [
+                      Text('🧮', style: TextStyle(fontSize: 16)),
+                      SizedBox(width: 6),
+                      Text('Calculator',
+                        style: TextStyle(color: AppColors.purple,
+                            fontSize: 12, fontWeight: FontWeight.w600)),
+                    ]))),
+              ]),
 
               const SizedBox(height: 24),
 
-              // ── Type Toggle ──
+              // Type Toggle
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.04),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.06)),
-                ),
+                      color: Colors.white.withOpacity(0.06))),
                 child: Row(
                   children: [
                     TransactionType.income,
-                    TransactionType.expense,
+                    TransactionType.expense
                   ].map((t) {
                     final isSelected = _type == t;
                     final isIncome = t == TransactionType.income;
@@ -141,180 +164,110 @@ class _AddTransactionScreenState
                           decoration: BoxDecoration(
                             gradient: isSelected ? _typeGrad : null,
                             borderRadius: BorderRadius.circular(13),
-                            boxShadow: isSelected
-                                ? [BoxShadow(
-                                    color: _typeColor.withOpacity(0.3),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 3),
-                                  )]
-                                : null,
-                          ),
+                            boxShadow: isSelected ? [BoxShadow(
+                              color: _typeColor.withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 3))] : null),
                           alignment: Alignment.center,
                           child: Text(
                             isIncome ? '↑  Income' : '↓  Expense',
                             style: TextStyle(
                               color: isSelected
-                                  ? Colors.white
-                                  : AppColors.textMuted,
+                                  ? Colors.white : AppColors.textMuted,
                               fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
+                              fontWeight: FontWeight.w700)))));
+                  }).toList())),
 
               const SizedBox(height: 20),
 
-              // ── Amount Input ──
+              // Amount Input
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF1A2440), Color(0xFF0D1428)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
                   borderRadius: BorderRadius.circular(20),
-                  border:
-                      Border.all(color: _typeColor.withOpacity(0.2)),
-                ),
+                  border: Border.all(color: _typeColor.withOpacity(0.2))),
                 child: Column(children: [
                   const Text('পরিমাণ লিখো',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w600,
-                    )),
+                    style: TextStyle(color: AppColors.textMuted,
+                        fontSize: 12, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Row(mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('৳',
-                        style: TextStyle(
-                          color: _typeColor,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Syne',
-                        )),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _amountCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                  decimal: true),
-                          textAlign: TextAlign.center,
-                          onChanged: (_) => setState(() {}),
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 40,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -1,
-                            fontFamily: 'Syne',
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '0.00',
-                            hintStyle: TextStyle(
-                              color: AppColors.textDim,
-                              fontSize: 40,
-                              fontFamily: 'Syne',
-                            ),
-                            border: InputBorder.none,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    Text('৳', style: TextStyle(color: _typeColor,
+                        fontSize: 28, fontWeight: FontWeight.w800,
+                        fontFamily: 'Syne')),
+                    const SizedBox(width: 8),
+                    Expanded(child: TextField(
+                      controller: _amountCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary, fontSize: 40,
+                        fontWeight: FontWeight.w800, letterSpacing: -1,
+                        fontFamily: 'Syne'),
+                      decoration: const InputDecoration(
+                        hintText: '0.00',
+                        hintStyle: TextStyle(color: AppColors.textDim,
+                            fontSize: 40, fontFamily: 'Syne'),
+                        border: InputBorder.none))),
+                  ]),
                   const SizedBox(height: 8),
-                  Container(
-                    height: 2,
-                    decoration: BoxDecoration(
-                      gradient: _typeGrad,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                ]),
-              ),
+                  Container(height: 2, decoration: BoxDecoration(
+                    gradient: _typeGrad,
+                    borderRadius: BorderRadius.circular(1))),
+                ])),
 
               const SizedBox(height: 20),
 
-              // ── Category ──
+              // Category
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Category বেছে নাও',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.1,
-                    )),
-                  // Category tab এ যাওয়ার shortcut
+                    style: TextStyle(color: AppColors.textMuted,
+                        fontSize: 12, fontWeight: FontWeight.w600)),
                   GestureDetector(
-                    onTap: () => ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(
-                      content: Text(
-                          'নতুন Category বানাতে নিচের 🏷️ বাটন চাপো'),
-                      behavior: SnackBarBehavior.floating,
-                    )),
-                    child: Text('+ নতুন Category?',
-                      style: TextStyle(
-                        color: _typeColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      )),
-                  ),
-                ],
-              ),
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        content: Text(
+                            '🏷️ নতুন Category বানাতে নিচের Category ট্যাব চাপো'))),
+                    child: Text('+ নতুন?',
+                      style: TextStyle(color: _typeColor,
+                          fontSize: 12, fontWeight: FontWeight.w600))),
+                ]),
               const SizedBox(height: 10),
 
-              // ── Category Grid ──
               categories.isEmpty
                   ? Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.04),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: Colors.white.withOpacity(0.06)),
-                      ),
-                      child: Center(
-                        child: Column(children: [
-                          const Text('🏷️',
-                              style: TextStyle(fontSize: 32)),
-                          const SizedBox(height: 8),
-                          Text(
-                            'কোনো Category নেই\nনিচের 🏷️ Category বাটন চাপো',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: _typeColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ]),
-                      ),
-                    )
+                        borderRadius: BorderRadius.circular(16)),
+                      child: Center(child: Column(children: [
+                        const Text('🏷️', style: TextStyle(fontSize: 32)),
+                        const SizedBox(height: 8),
+                        Text('নিচের 🏷️ Category ট্যাব থেকে যোগ করো',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: _typeColor, fontSize: 13,
+                              fontWeight: FontWeight.w600))])))
                   : GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 4,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 0.9,
-                      ),
+                        mainAxisSpacing: 10, crossAxisSpacing: 10,
+                        childAspectRatio: 0.9),
                       itemCount: categories.length,
                       itemBuilder: (_, i) {
                         final cat = categories[i];
-                        final selected =
-                            _selectedCategory?.id == cat.id;
+                        final selected = _selectedCategory?.id == cat.id;
                         return GestureDetector(
                           onTap: () =>
                               setState(() => _selectedCategory = cat),
@@ -325,56 +278,39 @@ class _AddTransactionScreenState
                                   ? _typeColor.withOpacity(0.15)
                                   : Colors.white.withOpacity(0.04),
                               border: Border.all(
-                                color: selected
-                                    ? _typeColor
+                                color: selected ? _typeColor
                                     : Colors.white.withOpacity(0.07),
-                                width: 1.5,
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                                width: 1.5),
+                              borderRadius: BorderRadius.circular(14)),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(cat.icon,
-                                    style:
-                                        const TextStyle(fontSize: 22)),
+                                    style: const TextStyle(fontSize: 22)),
                                 const SizedBox(height: 4),
                                 Text(cat.name,
                                   style: TextStyle(
-                                    color: selected
-                                        ? _typeColor
+                                    color: selected ? _typeColor
                                         : AppColors.textMuted,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                    fontSize: 10, fontWeight: FontWeight.w600),
                                   textAlign: TextAlign.center,
                                   maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                                  overflow: TextOverflow.ellipsis),
+                              ])));
+                      }),
 
               const SizedBox(height: 20),
 
-              // ── Note ──
-              const Text('Note',
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.1,
-                )),
+              // Note
+              const Text('Note', style: TextStyle(color: AppColors.textMuted,
+                  fontSize: 12, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               TextField(
                 controller: _noteCtrl,
                 style: const TextStyle(
                     color: AppColors.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'কীসের জন্য? (optional)',
+                  hintText: 'কীসের জন্য? (ঐচ্ছিক)',
                   hintStyle: const TextStyle(
                       color: AppColors.textDim, fontSize: 14),
                   filled: true,
@@ -382,33 +318,24 @@ class _AddTransactionScreenState
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide(
-                        color: Colors.white.withOpacity(0.07)),
-                  ),
+                        color: Colors.white.withOpacity(0.07))),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide(
-                        color: Colors.white.withOpacity(0.07)),
-                  ),
+                        color: Colors.white.withOpacity(0.07))),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(
-                        color: AppColors.gold, width: 1.5),
-                  ),
+                        color: AppColors.gold, width: 1.5)),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                ),
-              ),
+                      horizontal: 16, vertical: 14))),
 
               const SizedBox(height: 16),
 
-              // ── Date ──
-              const Text('Date',
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.1,
-                )),
+              // Date
+              const Text('Date', style: TextStyle(
+                  color: AppColors.textMuted, fontSize: 12,
+                  fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: () async {
@@ -420,11 +347,8 @@ class _AddTransactionScreenState
                     builder: (ctx, child) => Theme(
                       data: ThemeData.dark().copyWith(
                         colorScheme: const ColorScheme.dark(
-                            primary: AppColors.gold),
-                      ),
-                      child: child!,
-                    ),
-                  );
+                            primary: AppColors.gold)),
+                      child: child!));
                   if (picked != null) setState(() => _date = picked);
                 },
                 child: Container(
@@ -434,44 +358,32 @@ class _AddTransactionScreenState
                     color: Colors.white.withOpacity(0.04),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.07)),
-                  ),
+                        color: Colors.white.withOpacity(0.07))),
                   child: Row(children: [
                     const Icon(Icons.calendar_today_rounded,
                         color: AppColors.gold, size: 18),
                     const SizedBox(width: 12),
-                    Text(
-                      '${_date.day}/${_date.month}/${_date.year}',
+                    Text('${_date.day}/${_date.month}/${_date.year}',
                       style: const TextStyle(
-                          color: AppColors.textPrimary, fontSize: 14),
-                    ),
-                  ]),
-                ),
-              ),
+                          color: AppColors.textPrimary, fontSize: 14)),
+                  ]))),
 
               const SizedBox(height: 28),
 
-              // ── Save Button ──
+              // Save Button
               GestureDetector(
                 onTap: _saving ? null : _save,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: double.infinity,
-                  height: 56,
+                  width: double.infinity, height: 56,
                   decoration: BoxDecoration(
                     gradient: canSave ? AppColors.gradGold : null,
                     color: canSave
-                        ? null
-                        : Colors.white.withOpacity(0.07),
+                        ? null : Colors.white.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: canSave
-                        ? [BoxShadow(
-                            color: AppColors.gold.withOpacity(0.35),
-                            blurRadius: 20,
-                            offset: const Offset(0, 6),
-                          )]
-                        : null,
-                  ),
+                    boxShadow: canSave ? [BoxShadow(
+                      color: AppColors.gold.withOpacity(0.35),
+                      blurRadius: 20, offset: const Offset(0, 6))] : null),
                   alignment: Alignment.center,
                   child: _saving
                       ? const CircularProgressIndicator(
@@ -484,18 +396,251 @@ class _AddTransactionScreenState
                             color: canSave
                                 ? const Color(0xFF0A0E1A)
                                 : AppColors.textMuted,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'Syne',
-                          )),
-                ),
-              ),
+                            fontSize: 15, fontWeight: FontWeight.w800,
+                            fontFamily: 'Syne')))),
 
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ),
-    );
+              const SizedBox(height: 80),
+            ])));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CALCULATOR SHEET
+// ═══════════════════════════════════════════════════════════
+class _CalculatorSheet extends StatefulWidget {
+  final Function(String) onResult;
+  const _CalculatorSheet({required this.onResult});
+
+  @override
+  State<_CalculatorSheet> createState() => _CalculatorSheetState();
+}
+
+class _CalculatorSheetState extends State<_CalculatorSheet> {
+  String _display = '0';
+  String _expression = '';
+  double? _firstNum;
+  String? _operator;
+  bool _newInput = false;
+
+  void _onButton(String val) {
+    setState(() {
+      if (val == 'C') {
+        _display = '0';
+        _expression = '';
+        _firstNum = null;
+        _operator = null;
+        _newInput = false;
+      } else if (val == '⌫') {
+        if (_display.length > 1) {
+          _display = _display.substring(0, _display.length - 1);
+        } else {
+          _display = '0';
+        }
+      } else if (['+', '-', '×', '÷'].contains(val)) {
+        _firstNum = double.tryParse(_display);
+        _operator = val;
+        _expression = '$_display $val';
+        _newInput = true;
+      } else if (val == '=') {
+        if (_firstNum != null && _operator != null) {
+          final second = double.tryParse(_display) ?? 0;
+          double result = 0;
+          switch (_operator) {
+            case '+': result = _firstNum! + second; break;
+            case '-': result = _firstNum! - second; break;
+            case '×': result = _firstNum! * second; break;
+            case '÷': result = second != 0 ? _firstNum! / second : 0; break;
+          }
+          _expression = '$_expression $_display =';
+          // Remove trailing zeros
+          if (result == result.truncate()) {
+            _display = result.toInt().toString();
+          } else {
+            _display = result.toStringAsFixed(2);
+          }
+          _firstNum = null;
+          _operator = null;
+          _newInput = true;
+        }
+      } else if (val == '.') {
+        if (_newInput) {
+          _display = '0.';
+          _newInput = false;
+        } else if (!_display.contains('.')) {
+          _display += '.';
+        }
+      } else {
+        // Number
+        if (_newInput || _display == '0') {
+          _display = val;
+          _newInput = false;
+        } else {
+          if (_display.length < 12) _display += val;
+        }
+      }
+    });
+  }
+
+  Widget _btn(String label, {Color? bg, Color? fg, int flex = 1}) {
+    Color bgColor = bg ?? const Color(0xFF1E2A40);
+    Color fgColor = fg ?? AppColors.textPrimary;
+
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: GestureDetector(
+          onTap: () => _onButton(label),
+          child: Container(
+            height: 64,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 4, offset: const Offset(0, 2))]),
+            alignment: Alignment.center,
+            child: Text(label,
+              style: TextStyle(
+                color: fgColor, fontSize: 20,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Syne')))));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D1428),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          const SizedBox(height: 12),
+          Center(child: Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 8),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+              const Text('🧮 Calculator',
+                style: TextStyle(color: AppColors.textPrimary,
+                    fontSize: 16, fontWeight: FontWeight.w700,
+                    fontFamily: 'Syne')),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.close_rounded,
+                      color: AppColors.textMuted, size: 18))),
+            ])),
+
+          // Expression
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 24, vertical: 4),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(_expression,
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 13)))),
+
+          // Display
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 20, vertical: 4),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141C2E),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: AppColors.gold.withOpacity(0.2))),
+              child: Text(
+                _display,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: AppColors.textPrimary, fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1, fontFamily: 'Syne')))),
+
+          const SizedBox(height: 8),
+
+          // Buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Column(children: [
+              Row(children: [
+                _btn('C', bg: AppColors.rose.withOpacity(0.2),
+                    fg: AppColors.rose),
+                _btn('⌫', bg: Colors.orange.withOpacity(0.2),
+                    fg: Colors.orange),
+                _btn('%', bg: const Color(0xFF1E2A40),
+                    fg: AppColors.gold),
+                _btn('÷', bg: AppColors.gold.withOpacity(0.2),
+                    fg: AppColors.gold),
+              ]),
+              Row(children: [
+                _btn('7'), _btn('8'), _btn('9'),
+                _btn('×', bg: AppColors.gold.withOpacity(0.2),
+                    fg: AppColors.gold),
+              ]),
+              Row(children: [
+                _btn('4'), _btn('5'), _btn('6'),
+                _btn('-', bg: AppColors.gold.withOpacity(0.2),
+                    fg: AppColors.gold),
+              ]),
+              Row(children: [
+                _btn('1'), _btn('2'), _btn('3'),
+                _btn('+', bg: AppColors.gold.withOpacity(0.2),
+                    fg: AppColors.gold),
+              ]),
+              Row(children: [
+                _btn('0', flex: 2),
+                _btn('.'),
+                // Use button — result টা amount এ বসাবে
+                Expanded(child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: GestureDetector(
+                    onTap: () {
+                      // = চাপো তারপর use করো
+                      _onButton('=');
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        widget.onResult(_display);
+                        Navigator.pop(context);
+                      });
+                    },
+                    child: Container(
+                      height: 64,
+                      decoration: BoxDecoration(
+                        gradient: AppColors.gradGold,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(
+                          color: AppColors.gold.withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3))]),
+                      alignment: Alignment.center,
+                      child: const Text('✓ Use',
+                        style: TextStyle(color: Color(0xFF0A0E1A),
+                            fontSize: 16, fontWeight: FontWeight.w800,
+                            fontFamily: 'Syne')))))),
+              ]),
+            ])),
+
+          const SizedBox(height: 8),
+        ]));
   }
 }
