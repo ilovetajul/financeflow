@@ -14,7 +14,8 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    final path = join(await getDatabasesPath(), 'financeflow.db');
+    final path =
+        join(await getDatabasesPath(), 'financeflow.db');
     return openDatabase(path, version: 1, onCreate: _onCreate);
   }
 
@@ -34,11 +35,13 @@ class DatabaseHelper {
 
   Future<List<model.Transaction>> getAllTransactions() async {
     final db = await database;
-    final maps = await db.query('transactions', orderBy: 'date DESC');
+    final maps =
+        await db.query('transactions', orderBy: 'date DESC');
     return maps.map(model.Transaction.fromJson).toList();
   }
 
-  Future<void> insertTransaction(model.Transaction tx) async {
+  Future<void> insertTransaction(
+      model.Transaction tx) async {
     final db = await database;
     await db.insert(
       'transactions',
@@ -47,9 +50,22 @@ class DatabaseHelper {
     );
   }
 
+  // ── Update/Edit ─────────────────────────────────────────
+  Future<void> updateTransaction(
+      model.Transaction tx) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      tx.toJson(),
+      where: 'id = ?',
+      whereArgs: [tx.id],
+    );
+  }
+
   Future<void> deleteTransaction(String id) async {
     final db = await database;
-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+    await db.delete(
+        'transactions', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteAll() async {
@@ -57,7 +73,8 @@ class DatabaseHelper {
     await db.delete('transactions');
   }
 
-  Future<void> insertAll(List<model.Transaction> txs) async {
+  Future<void> insertAll(
+      List<model.Transaction> txs) async {
     final db = await database;
     final batch = db.batch();
     for (final tx in txs) {
