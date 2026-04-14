@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
-import 'package:printing/printing.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../../app/theme.dart';
 import '../../providers/transaction_provider.dart';
 import '../../../domain/models/transaction.dart';
@@ -30,9 +31,7 @@ class _PdfExportScreenState extends ConsumerState<PdfExportScreen> {
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: AppColors.gold)),
         child: child!));
-    if (picked != null) {
-      setState(() { if (isFrom) _fromDate = picked; else _toDate = picked; });
-    }
+    if (picked != null) setState(() { if (isFrom) _fromDate = picked; else _toDate = picked; });
   }
 
   List<Transaction> _getFiltered(List<Transaction> all) {
@@ -42,92 +41,7 @@ class _PdfExportScreenState extends ConsumerState<PdfExportScreen> {
       ..sort((a, b) => a.date.compareTo(b.date));
   }
 
-  String _esc(String t) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-
-  // HTML build করো — Google Fonts নেই, system font ব্যবহার করো
-  // Android এর system Bengali font CTL support করে
-  String _buildHtml(List<Transaction> filtered, double totalIncome, double totalExpense, double balance, Map<String, List<Transaction>> grouped) {
-    final balanceColor = balance >= 0 ? '#F4C55A' : '#F4617A';
-    final balanceText = '${balance >= 0 ? '+' : ''}৳${balance.toStringAsFixed(0)}';
-    final now = DateTime.now();
-
-    final StringBuffer rows = StringBuffer();
-    for (final entry in grouped.entries) {
-      final dayTxs = entry.value;
-      final dayBal = dayTxs.fold<double>(0, (s, t) => t.type == TransactionType.income ? s + t.amount : s - t.amount);
-      final dayBalText = '${dayBal >= 0 ? '+' : ''}৳${dayBal.toStringAsFixed(0)}';
-      rows.write('<tr class="dr"><td colspan="3"><b>${entry.key}</b></td><td colspan="2" style="text-align:right;"><b>ব্যালেন্স: $dayBalText</b></td></tr>');
-      for (int i = 0; i < dayTxs.length; i++) {
-        final tx = dayTxs[i];
-        final isInc = tx.type == TransactionType.income;
-        final bg = i.isEven ? '#F8FAFF' : '#FFFFFF';
-        final inc = isInc ? '<b style="color:#38D9C0;">৳${tx.amount.toStringAsFixed(0)}</b>' : '';
-        final exp = !isInc ? '<b style="color:#F4617A;">৳${tx.amount.toStringAsFixed(0)}</b>' : '';
-        rows.write('<tr style="background:$bg;"><td style="color:#6B7280;">${tx.date.day}/${tx.date.month}</td><td>${_esc(tx.note)}</td><td style="color:#6B7280;">${_esc(tx.category)}</td><td style="text-align:right;">$inc</td><td style="text-align:right;">$exp</td></tr>');
-      }
-    }
-
-    return '''<!DOCTYPE html>
-<html lang="bn"><head><meta charset="UTF-8"/>
-<style>
-/* System font — Bengali CTL নিজেই handle করে */
-* { box-sizing:border-box; margin:0; padding:0; }
-body { font-family: sans-serif; font-size:11px; color:#1F2937; background:#fff; padding:24px; }
-.hdr { background:#1E3A5F; border-radius:10px; padding:18px 20px; display:flex; justify-content:space-between; margin-bottom:16px; }
-.title { font-size:22px; font-weight:700; color:#F4C55A; margin-bottom:4px; }
-.sub { font-size:11px; color:#8892A4; margin-bottom:2px; }
-.dr2 { font-size:10px; color:#8892A4; }
-.tc { text-align:right; }
-.tl { color:#8892A4; font-size:10px; }
-.tv { color:#F4C55A; font-size:13px; font-weight:700; }
-.sum { display:flex; gap:10px; margin-bottom:16px; }
-.box { flex:1; border-radius:8px; padding:10px 12px; border-width:1.5px; border-style:solid; }
-.bl { font-size:9px; color:#6B7280; margin-bottom:4px; }
-.bv { font-size:14px; font-weight:700; }
-.bi { border-color:#38D9C0; } .bi .bv { color:#38D9C0; }
-.be { border-color:#F4617A; } .be .bv { color:#F4617A; }
-.bb { border-color:${balanceColor}; } .bb .bv { color:${balanceColor}; }
-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
-thead tr { background:#1E3A5F; }
-thead th { padding:7px 8px; font-size:10px; font-weight:700; color:#fff; text-align:left; }
-.hi { color:#38D9C0; text-align:right; }
-.he { color:#F4617A; text-align:right; }
-tr.dr td { background:#FDF3CE; padding:5px 8px; font-size:9px; color:#0A0E1A; }
-tbody tr td { padding:6px 8px; font-size:10px; border-bottom:1px solid #F3F4F6; }
-.tot td { background:#1E3A5F !important; padding:8px; font-size:11px; font-weight:700; border:none; }
-.tl2 { color:#F4C55A; } .ti { color:#38D9C0; text-align:right; } .te { color:#F4617A; text-align:right; }
-.footer { margin-top:14px; font-size:9px; color:#9CA3AF; }
-</style></head><body>
-<div class="hdr">
-  <div>
-    <div class="title">FinanceFlow</div>
-    <div class="sub">আর্থিক প্রতিবেদন</div>
-    <div class="dr2">${_fromDate.day}/${_fromDate.month}/${_fromDate.year} &mdash; ${_toDate.day}/${_toDate.month}/${_toDate.year}</div>
-  </div>
-  <div class="tc"><div class="tl">মোট লেনদেন</div><div class="tv">${filtered.length} টি</div></div>
-</div>
-<div class="sum">
-  <div class="box bi"><div class="bl">মোট জমা</div><div class="bv">৳${totalIncome.toStringAsFixed(0)}</div></div>
-  <div class="box be"><div class="bl">মোট খরচ</div><div class="bv">৳${totalExpense.toStringAsFixed(0)}</div></div>
-  <div class="box bb"><div class="bl">ব্যালেন্স</div><div class="bv">$balanceText</div></div>
-</div>
-<table>
-  <thead><tr>
-    <th style="width:55px;">তারিখ</th>
-    <th>বিবরণ</th>
-    <th style="width:95px;">Category</th>
-    <th class="hi" style="width:80px;">জমা</th>
-    <th class="he" style="width:80px;">খরচ</th>
-  </tr></thead>
-  <tbody>
-    $rows
-    <tr class="tot"><td colspan="3" class="tl2">সর্বমোট</td><td class="ti">৳${totalIncome.toStringAsFixed(0)}</td><td class="te">৳${totalExpense.toStringAsFixed(0)}</td></tr>
-  </tbody>
-</table>
-<div class="footer">Generated by FinanceFlow &middot; ${now.day}/${now.month}/${now.year}</div>
-</body></html>''';
-  }
-
+  // PDF generation — pdf package (offline, no WebView, no internet needed)
   Future<void> _generatePdf(List<Transaction> transactions) async {
     setState(() { _generating = true; _savedPath = null; });
     try {
@@ -136,17 +50,141 @@ tbody tr td { padding:6px 8px; font-size:10px; border-bottom:1px solid #F3F4F6; 
       final totalExpense = filtered.where((t) => t.type == TransactionType.expense).fold(0.0, (s, t) => s + t.amount);
       final balance = totalIncome - totalExpense;
 
+      // Load Bengali font from assets
+      pw.Font? regularFont;
+      pw.Font? boldFont;
+      try {
+        final rData = await rootBundle.load('assets/fonts/NotoSansBengali-Regular.ttf');
+        final bData = await rootBundle.load('assets/fonts/NotoSansBengali-Bold.ttf');
+        regularFont = pw.Font.ttf(rData);
+        boldFont = pw.Font.ttf(bData);
+      } catch (_) {
+        // Font not found — use built-in font (Bengali may show as boxes, but PDF generates)
+        regularFont = null;
+        boldFont = null;
+      }
+
+      // Text styles
+      pw.TextStyle body(double sz, {PdfColor? color, bool bold = false}) => pw.TextStyle(
+        font: bold ? (boldFont ?? pw.Font.helveticaBold()) : (regularFont ?? pw.Font.helvetica()),
+        fontSize: sz, color: color);
+
+      // Group by date
       final grouped = <String, List<Transaction>>{};
       for (final tx in filtered) {
         final key = '${tx.date.day.toString().padLeft(2,'0')}/${tx.date.month.toString().padLeft(2,'0')}/${tx.date.year}';
         grouped.putIfAbsent(key, () => []).add(tx);
       }
 
-      final html = _buildHtml(filtered, totalIncome, totalExpense, balance, grouped);
+      final pdf = pw.Document();
+      final now = DateTime.now();
 
-      // convertHtml — device WebView engine, Bengali CTL renders perfectly
-      final bytes = await Printing.convertHtml(format: PdfPageFormat.a4, html: html);
+      pdf.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(28),
+        theme: regularFont != null
+            ? pw.ThemeData.withFont(base: regularFont, bold: boldFont ?? regularFont)
+            : pw.ThemeData(),
+        build: (context) => [
 
+          // Header
+          pw.Container(
+            padding: const pw.EdgeInsets.all(18),
+            decoration: pw.BoxDecoration(color: const PdfColor.fromInt(0xFF1E3A5F), borderRadius: pw.BorderRadius.circular(8)),
+            child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                pw.Text('FinanceFlow', style: body(22, color: const PdfColor.fromInt(0xFFF4C55A), bold: true)),
+                pw.SizedBox(height: 4),
+                pw.Text('আর্থিক প্রতিবেদন', style: body(11, color: const PdfColor.fromInt(0xFF8892A4))),
+                pw.SizedBox(height: 2),
+                pw.Text('${_fromDate.day}/${_fromDate.month}/${_fromDate.year} - ${_toDate.day}/${_toDate.month}/${_toDate.year}',
+                  style: body(9, color: const PdfColor.fromInt(0xFF8892A4))),
+              ]),
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                pw.Text('মোট লেনদেন', style: body(9, color: const PdfColor.fromInt(0xFF8892A4))),
+                pw.Text('${filtered.length} টি', style: body(13, color: const PdfColor.fromInt(0xFFF4C55A), bold: true)),
+              ]),
+            ])),
+          pw.SizedBox(height: 14),
+
+          // Summary boxes
+          pw.Row(children: [
+            _pdfBox('মোট জমা', '৳${totalIncome.toStringAsFixed(0)}', const PdfColor.fromInt(0xFF38D9C0), body),
+            pw.SizedBox(width: 8),
+            _pdfBox('মোট খরচ', '৳${totalExpense.toStringAsFixed(0)}', const PdfColor.fromInt(0xFFF4617A), body),
+            pw.SizedBox(width: 8),
+            _pdfBox('ব্যালেন্স', '${balance >= 0 ? '+' : ''}৳${balance.toStringAsFixed(0)}',
+              balance >= 0 ? const PdfColor.fromInt(0xFFF4C55A) : const PdfColor.fromInt(0xFFF4617A), body),
+          ]),
+          pw.SizedBox(height: 14),
+
+          // Table header
+          pw.Container(
+            color: const PdfColor.fromInt(0xFF1E3A5F),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            child: pw.Row(children: [
+              pw.SizedBox(width: 55, child: pw.Text('তারিখ', style: body(9, color: PdfColors.white, bold: true))),
+              pw.Expanded(child: pw.Text('বিবরণ', style: body(9, color: PdfColors.white, bold: true))),
+              pw.SizedBox(width: 90, child: pw.Text('Category', style: body(9, color: PdfColors.white, bold: true))),
+              pw.SizedBox(width: 75, child: pw.Text('জমা', style: body(9, color: const PdfColor.fromInt(0xFF38D9C0), bold: true), textAlign: pw.TextAlign.right)),
+              pw.SizedBox(width: 75, child: pw.Text('খরচ', style: body(9, color: const PdfColor.fromInt(0xFFF4617A), bold: true), textAlign: pw.TextAlign.right)),
+            ])),
+
+          // Transaction rows
+          ...grouped.entries.expand((entry) {
+            final dayTxs = entry.value;
+            final dayBal = dayTxs.fold<double>(0, (s, t) => t.type == TransactionType.income ? s + t.amount : s - t.amount);
+            return [
+              pw.Container(
+                color: const PdfColor.fromInt(0xFFFDF3CE),
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                  pw.Text(entry.key, style: body(9, color: const PdfColor.fromInt(0xFF0A0E1A), bold: true)),
+                  pw.Text('ব্যালেন্স: ${dayBal >= 0 ? '+' : ''}৳${dayBal.toStringAsFixed(0)}',
+                    style: body(9, color: const PdfColor.fromInt(0xFF0A0E1A), bold: true)),
+                ])),
+              ...dayTxs.asMap().entries.map((e) {
+                final tx = e.value;
+                final isInc = tx.type == TransactionType.income;
+                final bg = e.key.isEven ? const PdfColor.fromInt(0xFFF8FAFF) : PdfColors.white;
+                return pw.Container(
+                  color: bg,
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  child: pw.Row(children: [
+                    pw.SizedBox(width: 55, child: pw.Text('${tx.date.day}/${tx.date.month}', style: body(9, color: const PdfColor.fromInt(0xFF6B7280)))),
+                    pw.Expanded(child: pw.Text(tx.note, style: body(9))),
+                    pw.SizedBox(width: 90, child: pw.Text(tx.category, style: body(9, color: const PdfColor.fromInt(0xFF6B7280)))),
+                    pw.SizedBox(width: 75, child: pw.Text(
+                      isInc ? '৳${tx.amount.toStringAsFixed(0)}' : '',
+                      style: body(9, color: const PdfColor.fromInt(0xFF38D9C0), bold: true), textAlign: pw.TextAlign.right)),
+                    pw.SizedBox(width: 75, child: pw.Text(
+                      !isInc ? '৳${tx.amount.toStringAsFixed(0)}' : '',
+                      style: body(9, color: const PdfColor.fromInt(0xFFF4617A), bold: true), textAlign: pw.TextAlign.right)),
+                  ]));
+              }),
+            ];
+          }),
+
+          // Total row
+          pw.SizedBox(height: 6),
+          pw.Container(
+            color: const PdfColor.fromInt(0xFF1E3A5F),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: pw.Row(children: [
+              pw.Expanded(child: pw.Text('সর্বমোট', style: body(11, color: const PdfColor.fromInt(0xFFF4C55A), bold: true))),
+              pw.SizedBox(width: 75, child: pw.Text('৳${totalIncome.toStringAsFixed(0)}',
+                style: body(11, color: const PdfColor.fromInt(0xFF38D9C0), bold: true), textAlign: pw.TextAlign.right)),
+              pw.SizedBox(width: 75, child: pw.Text('৳${totalExpense.toStringAsFixed(0)}',
+                style: body(11, color: const PdfColor.fromInt(0xFFF4617A), bold: true), textAlign: pw.TextAlign.right)),
+            ])),
+
+          pw.SizedBox(height: 14),
+          pw.Text('Generated by FinanceFlow · ${now.day}/${now.month}/${now.year}',
+            style: body(9, color: const PdfColor.fromInt(0xFF9CA3AF))),
+        ]));
+
+      // Save
+      final bytes = await pdf.save();
       final dir = await getApplicationDocumentsDirectory();
       final fname = 'financeflow_${_fromDate.year}${_fromDate.month.toString().padLeft(2,'0')}${_fromDate.day.toString().padLeft(2,'0')}_${_toDate.year}${_toDate.month.toString().padLeft(2,'0')}${_toDate.day.toString().padLeft(2,'0')}.pdf';
       final file = File('${dir.path}/$fname');
@@ -161,10 +199,19 @@ tbody tr td { padding:6px 8px; font-size:10px; border-bottom:1px solid #F3F4F6; 
       setState(() { _generating = false; _savedPath = file.path; });
     } catch (e) {
       setState(() => _generating = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: AppColors.rose, content: Text('Error: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: AppColors.rose, content: Text('Error: $e')));
     }
+  }
+
+  pw.Widget _pdfBox(String label, String value, PdfColor color, pw.TextStyle Function(double, {PdfColor? color, bool bold}) body) {
+    return pw.Expanded(child: pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: color, width: 1.5), borderRadius: pw.BorderRadius.circular(6)),
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text(label, style: body(9, color: const PdfColor.fromInt(0xFF6B7280))),
+        pw.SizedBox(height: 4),
+        pw.Text(value, style: body(14, color: color, bold: true)),
+      ])));
   }
 
   @override
@@ -211,25 +258,22 @@ tbody tr td { padding:6px 8px; font-size:10px; border-bottom:1px solid #F3F4F6; 
             Row(children: [
               Expanded(child: _PreviewItem(label: 'মোট জমা', value: totalIncome, color: AppColors.teal)),
               Expanded(child: _PreviewItem(label: 'মোট খরচ', value: totalExpense, color: AppColors.rose)),
-              Expanded(child: _PreviewItem(label: 'ব্যালেন্স', value: totalIncome - totalExpense,
-                  color: totalIncome >= totalExpense ? AppColors.gold : AppColors.rose)),
+              Expanded(child: _PreviewItem(label: 'ব্যালেন্স', value: totalIncome - totalExpense, color: totalIncome >= totalExpense ? AppColors.gold : AppColors.rose)),
             ]),
           ])),
         const SizedBox(height: 16),
         Container(padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.teal.withOpacity(0.2))),
           child: const Row(children: [
-            Text('🔤', style: TextStyle(fontSize: 16)),
-            SizedBox(width: 8),
-            Expanded(child: Text('System Bengali font ব্যবহার করা হচ্ছে — internet ছাড়াই বাংলা সঠিকভাবে দেখাবে।',
+            Text('📄', style: TextStyle(fontSize: 16)), SizedBox(width: 8),
+            Expanded(child: Text('Offline PDF — internet ছাড়াই তৈরি হবে। Bengali font ফোনে থাকলে সঠিক দেখাবে।',
                 style: TextStyle(color: AppColors.teal, fontSize: 12, height: 1.4))),
           ])),
         const SizedBox(height: 20),
         if (!_generating)
           GestureDetector(
             onTap: filtered.isEmpty ? null : () => _generatePdf(allTxs),
-            child: Container(
-              width: double.infinity, height: 56,
+            child: Container(width: double.infinity, height: 56,
               decoration: BoxDecoration(
                 gradient: filtered.isEmpty ? null : AppColors.gradGold,
                 color: filtered.isEmpty ? Colors.white.withOpacity(0.07) : null,
@@ -280,41 +324,34 @@ class _DateBtn extends StatelessWidget {
   final String label; final DateTime date; final VoidCallback onTap;
   const _DateBtn({required this.label, required this.date, required this.onTap});
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap,
-      child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(color: const Color(0xFF141C2E), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.gold.withOpacity(0.3))),
-        child: Row(children: [
-          const Icon(Icons.calendar_today_rounded, color: AppColors.gold, size: 16), const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
-            Text('${date.day}/${date.month}/${date.year}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
-          ]),
-        ])));
-  }
+  Widget build(BuildContext context) => GestureDetector(onTap: onTap,
+    child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(color: const Color(0xFF141C2E), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.gold.withOpacity(0.3))),
+      child: Row(children: [
+        const Icon(Icons.calendar_today_rounded, color: AppColors.gold, size: 16), const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
+          Text('${date.day}/${date.month}/${date.year}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+        ])])));
 }
 
 class _QuickBtn extends StatelessWidget {
   final String label; final VoidCallback onTap;
   const _QuickBtn({required this.label, required this.onTap});
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap,
-      child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.08))),
-        child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))));
-  }
+  Widget build(BuildContext context) => GestureDetector(onTap: onTap,
+    child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.08))),
+      child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))));
 }
 
 class _PreviewItem extends StatelessWidget {
   final String label; final double value; final Color color;
   const _PreviewItem({required this.label, required this.value, required this.color});
   @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
-      const SizedBox(height: 4),
-      Text('৳${value.toStringAsFixed(0)}', style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
-    ]);
-  }
+  Widget build(BuildContext context) => Column(children: [
+    Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+    const SizedBox(height: 4),
+    Text('৳${value.toStringAsFixed(0)}', style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
+  ]);
 }
