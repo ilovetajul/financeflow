@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import '../../../app/theme.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/debt_provider.dart';
 import '../../../domain/models/transaction.dart';
 import '../all_transactions/all_transactions_screen.dart';
 import '../search/search_screen.dart';
 import '../edit_transaction/edit_transaction_screen.dart';
 import '../profile/profile_screen.dart';
+import '../debt/debt_screens.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -27,6 +29,7 @@ class DashboardScreen extends ConsumerWidget {
     final monthIncome = ref.watch(totalIncomeProvider);
     final monthExpense = ref.watch(totalExpenseProvider);
     final profile = ref.watch(profileProvider);
+    final totalDebtNet = ref.watch(totalOwedToMeProvider);
     final now = DateTime.now();
 
     final todayTxs = allTxs.where((t) => t.date.year == now.year && t.date.month == now.month && t.date.day == now.day).toList();
@@ -82,24 +85,23 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 16),
 
               // Month selector
-              SizedBox(height: 38,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  scrollDirection: Axis.horizontal, itemCount: 12,
-                  itemBuilder: (_, i) {
-                    final isSel = selectedMonth.month == i+1 && selectedMonth.year == now.year;
-                    return GestureDetector(
-                      onTap: () => ref.read(selectedMonthProvider.notifier).state = DateTime(now.year, i+1),
-                      child: AnimatedContainer(duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          gradient: isSel ? AppColors.gradGold : null,
-                          color: isSel ? null : Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: isSel ? Colors.transparent : Colors.white.withOpacity(0.08))),
-                        child: Text(months[i], style: TextStyle(color: isSel ? const Color(0xFF0A0E1A) : AppColors.textMuted, fontSize: 12, fontWeight: isSel ? FontWeight.w800 : FontWeight.w500))));
-                  })),
+              SizedBox(height: 38, child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                scrollDirection: Axis.horizontal, itemCount: 12,
+                itemBuilder: (_, i) {
+                  final isSel = selectedMonth.month == i+1 && selectedMonth.year == now.year;
+                  return GestureDetector(
+                    onTap: () => ref.read(selectedMonthProvider.notifier).state = DateTime(now.year, i+1),
+                    child: AnimatedContainer(duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: isSel ? AppColors.gradGold : null,
+                        color: isSel ? null : Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isSel ? Colors.transparent : Colors.white.withOpacity(0.08))),
+                      child: Text(months[i], style: TextStyle(color: isSel ? const Color(0xFF0A0E1A) : AppColors.textMuted, fontSize: 12, fontWeight: isSel ? FontWeight.w800 : FontWeight.w500))));
+                })),
 
               const SizedBox(height: 16),
 
@@ -115,9 +117,7 @@ class DashboardScreen extends ConsumerWidget {
                       style: TextStyle(color: AppColors.gold.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0, end: balance),
-                      duration: const Duration(milliseconds: 1200),
-                      curve: Curves.easeOutCubic,
+                      tween: Tween(begin: 0, end: balance), duration: const Duration(milliseconds: 1200), curve: Curves.easeOutCubic,
                       builder: (_, val, __) => Text('৳${val.toStringAsFixed(0)}',
                         style: const TextStyle(color: AppColors.textPrimary, fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -1, fontFamily: 'Syne'))),
                     const SizedBox(height: 16),
@@ -130,7 +130,7 @@ class DashboardScreen extends ConsumerWidget {
 
               const SizedBox(height: 14),
 
-              // Today / This week
+              // Today / Week
               Padding(padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(children: [
                   _SummaryCard(title: 'আজকে', income: todayIncome, expense: todayExpense, icon: '📅'),
@@ -169,6 +169,38 @@ class DashboardScreen extends ConsumerWidget {
 
               const SizedBox(height: 14),
 
+              // ── দেনা-পাওনা card ───────────────────────────────────
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DebtManagementScreen())),
+                  child: Container(padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFF1A1040), Color(0xFF0D0A2E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.purple.withOpacity(0.3))),
+                    child: Row(children: [
+                      Container(width: 48, height: 48,
+                        decoration: BoxDecoration(color: AppColors.purple.withOpacity(0.15), borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.purple.withOpacity(0.3))),
+                        child: const Center(child: Text('🤝', style: TextStyle(fontSize: 22)))),
+                      const SizedBox(width: 14),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('দেনা-পাওনা', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Syne')),
+                        Text(
+                          totalDebtNet == 0 ? 'সব হিসাব সমান'
+                              : totalDebtNet > 0 ? '৳${totalDebtNet.toStringAsFixed(0)} পাওনা আছে'
+                              : '৳${totalDebtNet.abs().toStringAsFixed(0)} দেনা আছে',
+                          style: TextStyle(
+                            color: totalDebtNet >= 0 ? AppColors.teal : AppColors.rose,
+                            fontSize: 12, fontWeight: FontWeight.w600)),
+                      ])),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: AppColors.purple.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                        child: Text('বিস্তারিত →', style: TextStyle(color: AppColors.purple.withOpacity(0.9), fontSize: 11, fontWeight: FontWeight.w700))),
+                    ]))));
+
+              const SizedBox(height: 14),
+
               // Stats
               Padding(padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(children: [
@@ -199,8 +231,7 @@ class DashboardScreen extends ConsumerWidget {
                   child: Container(padding: const EdgeInsets.all(32),
                     decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(20)),
                     child: const Center(child: Column(children: [
-                      Text('💰', style: TextStyle(fontSize: 40)),
-                      SizedBox(height: 12),
+                      Text('💰', style: TextStyle(fontSize: 40)), SizedBox(height: 12),
                       Text('এই মাসে কোনো লেনদেন নেই', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
                       Text('নিচের ➕ বাটন চেপে যোগ করুন', style: TextStyle(color: AppColors.textDim, fontSize: 12)),
                     ]))))
@@ -218,52 +249,37 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-// ── Widgets ──────────────────────────────────────────────────
-
 class _TxTile extends ConsumerWidget {
   final Transaction tx;
   const _TxTile({required this.tx});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIncome = tx.type == TransactionType.income;
     return Dismissible(
-      key: Key(tx.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 8),
+      key: Key(tx.id), direction: DismissDirection.endToStart,
+      background: Container(margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(color: AppColors.rose, borderRadius: BorderRadius.circular(16)),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
+        alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20),
         child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.delete_rounded, color: Colors.white, size: 22),
-          Text('Delete', style: TextStyle(color: Colors.white, fontSize: 10)),
-        ])),
-      // ── Confirm before delete ──
-      confirmDismiss: (_) async {
-        return await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            backgroundColor: const Color(0xFF141C2E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Delete করবে?',
-              style: TextStyle(color: AppColors.textPrimary, fontFamily: 'Syne', fontWeight: FontWeight.w700)),
-            content: Text('"${tx.note}" — ৳${tx.amount.toStringAsFixed(0)}',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false),
-                child: const Text('না', style: TextStyle(color: AppColors.textMuted, fontSize: 15))),
-              ElevatedButton(onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.rose, foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                child: const Text('হ্যাঁ, Delete')),
-            ]));
-      },
+          Text('Delete', style: TextStyle(color: Colors.white, fontSize: 10))])),
+      confirmDismiss: (_) async => await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF141C2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Delete করবে?', style: TextStyle(color: AppColors.textPrimary, fontFamily: 'Syne', fontWeight: FontWeight.w700)),
+          content: Text('"${tx.note}" — ৳${tx.amount.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('না', style: TextStyle(color: AppColors.textMuted, fontSize: 15))),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.rose, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              child: const Text('হ্যাঁ, Delete')),
+          ])),
       onDismissed: (_) => ref.read(transactionsProvider.notifier).remove(tx.id),
       child: GestureDetector(
         onLongPress: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditTransactionScreen(transaction: tx))),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(14),
+        child: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(color: const Color(0xFF141C2E), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.06))),
           child: Row(children: [
             Container(width: 42, height: 42,
@@ -286,67 +302,54 @@ class _TxTile extends ConsumerWidget {
 class _SummaryCard extends StatelessWidget {
   final String title, icon; final double income, expense;
   const _SummaryCard({required this.title, required this.icon, required this.income, required this.expense});
-  String _fmt(double v) => v >= 1000 ? '৳${(v/1000).toStringAsFixed(1)}k' : '৳${v.toStringAsFixed(0)}';
+  String _f(double v) => v >= 1000 ? '৳${(v/1000).toStringAsFixed(1)}k' : '৳${v.toStringAsFixed(0)}';
   @override
-  Widget build(BuildContext context) {
-    return Expanded(child: Container(padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF141C2E), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.06))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Text(icon, style: const TextStyle(fontSize: 16)), const SizedBox(width: 6),
-          Text(title, style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600))]),
-        const SizedBox(height: 10),
-        Row(children: [const Text('↑', style: TextStyle(color: AppColors.teal, fontSize: 11, fontWeight: FontWeight.bold)), const SizedBox(width: 4),
-          Text(_fmt(income), style: const TextStyle(color: AppColors.teal, fontSize: 12, fontWeight: FontWeight.w700))]),
-        const SizedBox(height: 4),
-        Row(children: [const Text('↓', style: TextStyle(color: AppColors.rose, fontSize: 11, fontWeight: FontWeight.bold)), const SizedBox(width: 4),
-          Text(_fmt(expense), style: const TextStyle(color: AppColors.rose, fontSize: 12, fontWeight: FontWeight.w700))]),
-      ])));
-  }
+  Widget build(BuildContext context) => Expanded(child: Container(padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: const Color(0xFF141C2E), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.06))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Text(icon, style: const TextStyle(fontSize: 16)), const SizedBox(width: 6), Text(title, style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600))]),
+      const SizedBox(height: 10),
+      Row(children: [const Text('↑', style: TextStyle(color: AppColors.teal, fontSize: 11, fontWeight: FontWeight.bold)), const SizedBox(width: 4), Text(_f(income), style: const TextStyle(color: AppColors.teal, fontSize: 12, fontWeight: FontWeight.w700))]),
+      const SizedBox(height: 4),
+      Row(children: [const Text('↓', style: TextStyle(color: AppColors.rose, fontSize: 11, fontWeight: FontWeight.bold)), const SizedBox(width: 4), Text(_f(expense), style: const TextStyle(color: AppColors.rose, fontSize: 12, fontWeight: FontWeight.w700))]),
+    ])));
 }
 
 class _LastMonthItem extends StatelessWidget {
   final String label, icon; final double value; final Color color; final bool isCount;
   const _LastMonthItem({required this.label, required this.value, required this.color, required this.icon, this.isCount = false});
   @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Text(icon, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 4),
-      Text(isCount ? '${value.toInt()} টি' : '৳${value.toStringAsFixed(0)}',
-        style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
-      Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
-    ]);
-  }
+  Widget build(BuildContext context) => Column(children: [
+    Text(icon, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 4),
+    Text(isCount ? '${value.toInt()} টি' : '৳${value.toStringAsFixed(0)}', style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
+    Text(label, style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
+  ]);
 }
 
 class _MiniStat extends StatelessWidget {
   final String label, value, arrow; final Color color;
   const _MiniStat({required this.label, required this.value, required this.color, required this.arrow});
   @override
-  Widget build(BuildContext context) {
-    return Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withOpacity(0.07))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Text(arrow, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)), const SizedBox(width: 4),
-          Expanded(child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis))]),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Syne')),
-      ])));
-  }
+  Widget build(BuildContext context) => Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withOpacity(0.07))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Text(arrow, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)), const SizedBox(width: 4),
+        Expanded(child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+      const SizedBox(height: 4),
+      Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Syne')),
+    ])));
 }
 
 class _StatCard extends StatelessWidget {
   final String icon, label, value; final Color color;
   const _StatCard({required this.icon, required this.label, required this.value, required this.color});
   @override
-  Widget build(BuildContext context) {
-    return Expanded(child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.2))),
-      child: Column(children: [
-        Text(icon, style: const TextStyle(fontSize: 18)),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
-        Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-      ])));
-  }
+  Widget build(BuildContext context) => Expanded(child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
+    decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.2))),
+    child: Column(children: [
+      Text(icon, style: const TextStyle(fontSize: 18)), const SizedBox(height: 4),
+      Text(value, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w800, fontFamily: 'Syne')),
+      Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+    ])));
 }
