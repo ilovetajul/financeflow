@@ -502,7 +502,7 @@ class _CatDetailScreen extends ConsumerWidget {
                         ])),
                         Text('${isIncome ? '+' : '-'}৳${tx.amount.toStringAsFixed(0)}',
                             style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Syne')),
-                      ]));
+                      ])));
                 })),
       ]),
     );
